@@ -79,23 +79,26 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
-# Usamos el session_state interno para el puente de JS a Python
-if "usuario_detectado" not in st.session_state:
-    st.session_state.usuario_detectado = "BUSCANDO"
+# Variable limpia para controlar la sesión de forma interna y estable
+if "usuario_activo" not in st.session_state:
+    st.session_state.usuario_activo = None
 
-# --- PUENTE JAVASCRIPT NATIVO PARA LEER LA MEMORIA DEL TELÉFONO ---
-js_lector = """
-<script>
-    const nombre = localStorage.getItem("nombre_usuario_ct_3b") || "NO_HAY";
-    parent.postMessage({type: "streamlit:setComponentValue", value: nombre}, "*");
-</script>
-"""
-# Al ejecutar este micro-componente, nos regresa lo que tenga el cel guardado
-js_response = components.html(js_lector, height=0, width=0)
-
-if js_response and st.session_state.usuario_detectado == "BUSCANDO":
-    st.session_state.usuario_detectado = js_response
-    st.rerun()
+# --- MICRO-LECTOR DE JAVASCRIPT CORREGIDO ---
+# Este script solo se encarga de despertar la sesión la primera vez si encuentra datos reales
+if st.session_state.usuario_activo is None:
+    js_lector = """
+    <script>
+        const nombre = localStorage.getItem("nombre_usuario_ct_3b");
+        if (nombre && nombre !== "undefined" && nombre !== "null") {
+            window.parent.postMessage({type: "streamlit:setComponentValue", value: nombre}, "*");
+        }
+    </script>
+    """
+    respuesta_js = components.html(js_lector, height=0, width=0)
+    # Validamos estrictamente que sea una cadena de texto limpia antes de asignarla
+    if isinstance(respuesta_js, str) and respuesta_js not in ["", "None", "undefined"]:
+        st.session_state.usuario_activo = respuesta_js
+        st.rerun()
 
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
@@ -112,29 +115,29 @@ rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "�
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # CASO A: No hay memoria en el cel, pide seleccionar el nombre
-    if st.session_state.usuario_detectado in ["NO_HAY", "BUSCANDO"]:
+    # CASO A: No hay sesión activa o se borró
+    if st.session_state.usuario_activo is None:
         st.info("👋 Bienvenido. Selecciona tu nombre para configurar esta App de forma permanente en tu celular.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
             if st.button("🔒 Recordar mi nombre en este celular", use_container_width=True):
-                # Inyectamos el guardado directo en el disco del navegador
+                st.session_state.usuario_activo = seleccion
+                # Forzamos el guardado físico inmediato en el navegador
                 js_guardar = f"""
                 <script>
                     localStorage.setItem("nombre_usuario_ct_3b", "{seleccion}");
-                    window.parent.location.reload();
                 </script>
                 """
                 components.html(js_guardar, height=0, width=0)
-                st.success("Guardando perfil...")
-                time.sleep(1)
+                st.success(f"¡Configurado exitosamente como {seleccion}!")
+                time.sleep(0.5)
                 st.rerun()
                 
-    # CASO B: El cel ya tiene el nombre grabado, entra directo SIEMPRE
+    # CASO B: Perfil activo con texto 100% limpio
     else:
-        usuario_actual = st.session_state.usuario_detectado
+        usuario_actual = str(st.session_state.usuario_activo)
         st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
@@ -179,12 +182,13 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
         elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
-            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada. ¡Recupérate pronto!")
+            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
         st.divider()
         if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
+            st.session_state.usuario_activo = None
             js_borrar = """
             <script>
                 localStorage.removeItem("nombre_usuario_ct_3b");
@@ -192,7 +196,6 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
             </script>
             """
             components.html(js_borrar, height=0, width=0)
-            st.session_state.usuario_detectado = "BUSCANDO"
             st.rerun()
 
 # ==============================================================================
