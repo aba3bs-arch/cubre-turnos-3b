@@ -96,6 +96,7 @@ rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "�
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
+    # Si el usuario no ha iniciado sesión en esta pestaña abierta, le pedimos identificarse
     if st.session_state.usuario_activo is None:
         st.info("👋 Bienvenido. Selecciona tu nombre para ingresar a tus notificaciones de hoy.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
@@ -106,11 +107,13 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                 st.session_state.usuario_activo = seleccion
                 st.rerun()
                 
+    # Si la sesión ya está activa, entra directo a sus datos sin mostrar a los demás
     else:
         usuario_actual = st.session_state.usuario_activo
         st.caption(f"👤 Perfil activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
+        # Lógica de Alertas / Despertador Urgente
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
             if not st.session_state.confirmando_rechazo:
                 play_alarm_sound()  
@@ -131,6 +134,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                         st.session_state.confirmando_rechazo = True
                         st.rerun()
             else:
+                # Bloque de Advertencia Psicológica por Rechazo Injustificado
                 st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
                 with st.container(border=True):
                     st.write(f"⚠️ **{usuario_actual}**, piénsalo bien antes de confirmar:")
@@ -157,7 +161,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
         st.divider()
-        if st.button("👤 Cerrar Sesión / Ver otros perfiles", key="logout_btn"):
+        if st.button("👤 Cerrar Sesión / Cambiar de Perfil", key="logout_btn"):
             st.session_state.usuario_activo = None
             st.rerun()
 
@@ -178,6 +182,7 @@ else:
             "⚙️ Configurar Tiendas"
         ])
         
+        # TAB 1: REGISTRAR NUEVOS CUBRE TURNOS
         with tab1:
             st.subheader("Registrar nuevo personal")
             with st.form("nuevo_ct_form", clear_on_submit=True):
@@ -200,6 +205,7 @@ else:
                         st.success(f"¡{nuevo_nombre} integrado al equipo temporalmente!")
                         st.rerun()
 
+        # TAB 2: ENVIAR SOLICITUDES DE COBERTURA
         with tab2:
             st.subheader("Mandar alerta de cobertura")
             lista_tiendas_disponibles = sorted(list(set([t["Tienda"] for t in st.session_state.descansos_tiendas])))
@@ -222,6 +228,7 @@ else:
                 st.session_state.confirmando_rechazo = False
                 st.success(f"Notificación activa para {ct_seleccionado}.")
 
+        # TAB 3: MONITOR DE EMERGENCIAS Y INCIDENCIAS
         with tab3:
             st.subheader("Rastreo de Respuestas de Personal")
             notif = st.session_state.notificaciones
@@ -243,10 +250,10 @@ else:
                             notif["estado"] = "justificado_sistema"
                             st.rerun()
 
+            # Lógica de sustitución automática (Se activa por falta o por aviso justificado)
             if notif["estado"] in ["rechazado", "justificado_sistema"]:
                 st.warning("🔄 Buscando sustituto desocupado en automático...")
                 
-                # --- LINEA CORREGIDA Y PROTEGIDA CONTRA ERRORES DE SINTAXIS ---
                 candidatos_libres = [
                     nombre for nombre, turnos in st.session_state.personal.items()
                     if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif["turno"] == "Día" and "Domingo Día" in turnos))
@@ -264,6 +271,7 @@ else:
                 else:
                     st.error("❌ CRÍTICO: ¡No queda personal disponible para cubrir este turno hoy!")
 
+        # TAB 4: PANEL DE MODIFICACIÓN DE DESCANSOS
         with tab4:
             st.subheader("Configuración de Descansos de Sucursales")
             df_actual = pd.DataFrame(st.session_state.descansos_tiendas)
