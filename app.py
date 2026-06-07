@@ -207,4 +207,83 @@ else:
             dia_sel = st.selectbox("Día:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"])
             turno_sel = st.radio("Turno:", ["Día", "Noche"], horizontal=True)
             
-            ct_filtrados =
+            ct_filtrados = [nombre for nombre, turnos in st.session_state.personal.items() if turno_sel in turnos]
+            ct_seleccionado = st.selectbox("Selecciona al CT destino:", ct_filtrados)
+            
+            if st.button("Enviar Alerta"):
+                st.session_state.notificaciones = {
+                    "tienda": tienda_sel,
+                    "dia": dia_sel,
+                    "turno": turno_sel,
+                    "historial_intentos": [ct_seleccionado],
+                    "ct_actual": ct_seleccionado,
+                    "estado": "pendiente"
+                }
+                st.session_state.confirmando_rechazo = False
+                st.success(f"Notificación activa para {ct_seleccionado}.")
+
+        with tab3:
+            st.subheader("Rastreo de Respuestas de Personal")
+            notif = st.session_state.notificaciones
+            
+            with st.container(border=True):
+                st.write(f"📍 **Turno Activo:** {notif['tienda']} ({notif['turno']})")
+                st.write(f"👤 **Asignado a:** {notif['ct_actual']} | 📊 **Estatus:** {notif['estado'].upper()}")
+                
+                if notif["estado"] == "pendiente":
+                    col_adm1, col_adm2 = st.columns(2)
+                    
+                    with col_adm1:
+                        if st.button("⏰ Tiempo Agotado / Falta Injustificada"):
+                            notif["estado"] = "rechazado"
+                            st.rerun()
+                            
+                    with col_adm2:
+                        if st.button("🤒 Procesar Falta Justificada (Aviso Anticipado)", type="primary"):
+                            notif["estado"] = "justificado_sistema"
+                            st.rerun()
+
+            if notif["estado"] in ["rechazado", "justificado_sistema"]:
+                st.warning("🔄 Buscando sustituto desocupado en automático...")
+                
+                # --- LINEA CORREGIDA Y PROTEGIDA CONTRA ERRORES DE SINTAXIS ---
+                candidatos_libres = [
+                    nombre for nombre, turnos in st.session_state.personal.items()
+                    if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif["turno"] == "Día" and "Domingo Día" in turnos))
+                    and nombre not in notif["historial_intentos"]
+                ]
+                
+                if candidatos_libres:
+                    siguiente_ct = candidatos_libres[0]
+                    notif["ct_actual"] = siguiente_ct
+                    notif["historial_intentos"].append(siguiente_ct)
+                    notif["estado"] = "pendiente"
+                    st.success(f"¡Reasignado automáticamente a: **{siguiente_ct}**!")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("❌ CRÍTICO: ¡No queda personal disponible para cubrir este turno hoy!")
+
+        with tab4:
+            st.subheader("Configuración de Descansos de Sucursales")
+            df_actual = pd.DataFrame(st.session_state.descansos_tiendas)
+            st.dataframe(df_actual, use_container_width=True)
+            
+            st.divider()
+            tienda_a_modificar = st.selectbox("Selecciona la Tienda:", sorted(list(set(df_actual["Tienda"]))))
+            turno_a_modificar = st.radio("Selecciona el Turno:", ["Día", "Noche"], key="mod_turno", horizontal=True)
+            nuevo_dia_descanso = st.selectbox("Nuevo Día de Descanso:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Ninguno"])
+            
+            if st.button("🔄 Actualizar Descanso"):
+                encontrado = False
+                for item in st.session_state.descansos_tiendas:
+                    if item["Tienda"] == tienda_a_modificar and item["Turno"] == turno_a_modificar:
+                        item["Día Descanso"] = nuevo_dia_descanso
+                        encontrado = True
+                if not encontrado:
+                    st.session_state.descansos_tiendas.append({"Tienda": tienda_a_modificar, "Turno": turno_a_modificar, "Día Descanso": nuevo_dia_descanso})
+                st.success("¡Cambio guardado exitosamente!")
+                st.rerun()
+                
+    elif password != "":
+        st.error("Contraseña incorrecta.")
