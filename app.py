@@ -64,7 +64,6 @@ if "personal" not in st.session_state:
         "Azul": ["Fijo Mezquite"]
     }
 
-# Simulación ajustada al caso real que comentas: Domingo en El Mezquite asignado a Azul
 if "notificaciones" not in st.session_state:
     st.session_state.notificaciones = {
         "tienda": "3B10 El Mezquite",
@@ -77,6 +76,10 @@ if "notificaciones" not in st.session_state:
 
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
+
+# Variable de sesión para controlar quién está logueado en esta pestaña abierta
+if "usuario_activo" not in st.session_state:
+    st.session_state.usuario_activo = None
 
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
@@ -93,26 +96,24 @@ rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "�
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    usuario_guardado = st.local_storage.get("ct_nombre_usuario")
-    
-    if not usuario_guardado:
-        st.info("👋 Bienvenido. Identifícate por primera vez para configurar esta App en tu celular.")
+    # PASO A: Si no ha seleccionado su nombre en esta sesión, se lo pedimos
+    if st.session_state.usuario_activo is None:
+        st.info("👋 Bienvenido. Selecciona tu nombre para ingresar a tus notificaciones de hoy.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
-        seleccion = st.selectbox("👤 ¿Cuál es tu nombre?", lista_empleados)
+        seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
-            if st.button("🔒 Confirmar e Instalar Perfil"):
-                st.local_storage.set("ct_nombre_usuario", seleccion)
-                st.success(f"¡Configurado! Hola {seleccion}.")
-                time.sleep(1)
+            if st.button("🔒 Entrar a mi Perfil", use_container_width=True):
+                st.session_state.usuario_activo = seleccion
                 st.rerun()
                 
+    # PASO B: Sesión iniciada, interfaz limpia y personalizada
     else:
-        usuario_actual = usuario_guardado
+        usuario_actual = st.session_state.usuario_activo
         st.caption(f"👤 Perfil activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
-        # Lógica de Alertas / Despertador Injustificado (Pantalla Normal)
+        # Lógica de Alertas / Despertador
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
             if not st.session_state.confirmando_rechazo:
                 play_alarm_sound()  
@@ -133,7 +134,6 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                         st.session_state.confirmando_rechazo = True
                         st.rerun()
             else:
-                # Pantalla de castigo si el empleado rechaza por su cuenta (Injustificado)
                 st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
                 with st.container(border=True):
                     st.write(f"⚠️ **{usuario_actual}**, piénsalo bien antes de confirmar:")
@@ -154,14 +154,14 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                     
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
-        elif notif["estado"] == "justificado" and "Azul" == usuario_actual:
+        elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
             st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada. ¡Recupérate pronto!")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
         st.divider()
-        if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
-            st.local_storage.delete("ct_nombre_usuario")
+        if st.button("👤 Cerrar Sesión / Ver otros perfiles", key="logout_btn"):
+            st.session_state.usuario_activo = None
             st.rerun()
 
 # ==============================================================================
@@ -242,17 +242,12 @@ else:
                             st.rerun()
                             
                     with col_adm2:
-                        # NUEVO BOTÓN PARA EL CASO DE AZUL
                         if st.button("🤒 Procesar Falta Justificada (Aviso Anticipado)", type="primary"):
                             notif["estado"] = "justificado_sistema"
                             st.rerun()
 
-            # LÓGICA AUTOMÁTICA DE SUSTITUCIÓN (Se activa por rechazo O por falta justificada)
             if notif["estado"] in ["rechazado", "justificado_sistema"]:
                 st.warning("🔄 Buscando sustituto desocupado en automático...")
-                
-                # Buscamos quién tiene el turno disponible (ej. Domingo Día) y no ha sido intentado antes
-                # Si es Domingo de Día, gente como 'Luz' entrará en la terna de candidatos automáticamente
                 candidatos_libres = [
                     nombre for nombre, turnos in st.session_state.personal.items()
                     if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif["turno"] == "Día" and "Domingo Día" in turnos))
