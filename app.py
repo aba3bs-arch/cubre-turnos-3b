@@ -1,9 +1,15 @@
 import streamlit as st
 import pandas as pd
 import time
+import os
 
-# --- CONFIGURACIÓN DE LA PÁGINA (Para que en celular se vea como App) ---
-st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
+# --- CONFIGURACIÓN DE LA PÁGINA (Se usa logo3b.png como icono oficial) ---
+# Usamos un bloque try/except por si el archivo no está en la carpeta, la app no truene.
+logo_path = "logo3b.png"
+if os.path.exists(logo_path):
+    st.set_page_config(page_title="Las 3B - Roles", page_icon=logo_path, layout="wide", initial_sidebar_state="collapsed")
+else:
+    st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
 
 # --- ESTILOS VISUALES (Punto rojo parpadeante de notificación) ---
 st.markdown("""
@@ -69,11 +75,15 @@ if "notificaciones" not in st.session_state:
         "estado": "pendiente"
     }
 
-# Variable interna para controlar si mostramos la advertencia en pantalla
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
-# --- 2. MENÚ LATERAL ---
+# --- MUESTRA DEL LOGO EN LA PARTE SUPERIOR DE LA APP ---
+col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
+with col_logo2:
+    if os.path.exists(logo_path):
+        st.image(logo_path, width=150)
+
 st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
@@ -90,10 +100,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         st.divider()
         notif = st.session_state.notificaciones
 
-        # Lógica del "Despertador" e Interfaz normal de solicitud
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
-            
-            # Si el usuario NO ha presionado rechazar todavía, se muestra la pantalla normal con la alarma
             if not st.session_state.confirmando_rechazo:
                 play_alarm_sound()  
                 st.markdown('### <span class="badge-red"></span> ¡TIENES UN TURNO ASIGNADO URGENTE!', unsafe_allow_html=True)
@@ -110,11 +117,8 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                         st.balloons()
                         st.rerun()
                     if col2.button("❌ NO PUEDO IR", use_container_width=True):
-                        # En lugar de rechazar directo, activamos la advertencia
                         st.session_state.confirmando_rechazo = True
                         st.rerun()
-            
-            # SI PRESIONÓ RECHAZAR: Se oculta lo anterior y aparece el mensaje de advertencia
             else:
                 st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
                 with st.container(border=True):
@@ -127,12 +131,10 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                     
                     col_si, col_no = st.columns(2)
                     if col_si.button("💥 SÍ, RECHAZAR Y PERDER PRIORIDAD", use_container_width=True):
-                        # Ahora sí procesamos el rechazo definitivo
                         st.session_state.confirmando_rechazo = False
                         st.session_state.notificaciones["estado"] = "rechazado"
                         st.rerun()
                     if col_no.button("🔙 REGRESAR Y ACEPTAR TURNO", use_container_width=True):
-                        # Cancelar el rechazo y regresar a la pantalla normal
                         st.session_state.confirmando_rechazo = False
                         st.rerun()
                     
@@ -158,7 +160,6 @@ else:
             "⚙️ Configurar Tiendas"
         ])
         
-        # TAB 1: REGISTRAR NUEVOS CUBRE TURNOS
         with tab1:
             st.subheader("Registrar nuevo personal")
             with st.form("nuevo_ct_form", clear_on_submit=True):
@@ -181,7 +182,6 @@ else:
                         st.success(f"¡{nuevo_nombre} integrado al equipo!")
                         st.rerun()
 
-        # TAB 2: ENVIAR SOLICITUDES MANUALES
         with tab2:
             st.subheader("Mandar alerta de cobertura")
             lista_tiendas_disponibles = sorted(list(set([t["Tienda"] for t in st.session_state.descansos_tiendas])))
@@ -201,10 +201,9 @@ else:
                     "ct_actual": ct_seleccionado,
                     "estado": "pendiente"
                 }
-                st.session_state.confirmando_rechazo = False # Resetear estado
+                st.session_state.confirmando_rechazo = False
                 st.success(f"Notificación activa para {ct_seleccionado}.")
 
-        # TAB 3: MONITOR DE EMERGENCIAS Y REASIGNACIÓN AUTOMÁTICA
         with tab3:
             st.subheader("Rastreo de Respuestas de Personal")
             notif = st.session_state.notificaciones
@@ -218,7 +217,6 @@ else:
                         notif["estado"] = "rechazado"
                         st.rerun()
 
-            # LÓGICA AUTOMÁTICA DE SUSTITUCIÓN
             if notif["estado"] == "rechazado":
                 st.warning("🔄 Buscando sustituto desocupado en automático...")
                 candidatos_libres = [
@@ -237,7 +235,6 @@ else:
                 else:
                     st.error("❌ CRÍTICO: ¡No queda personal disponible para este turno!")
 
-        # TAB 4: MODIFICAR DESCANSOS DE LAS TIENDAS
         with tab4:
             st.subheader("Configuración de Descansos de Sucursales")
             df_actual = pd.DataFrame(st.session_state.descansos_tiendas)
