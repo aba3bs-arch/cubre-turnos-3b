@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import time
 import os
-import streamlit.components.v1 as components
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -79,26 +78,10 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
-# Variable limpia para controlar la sesión de forma interna y estable
-if "usuario_activo" not in st.session_state:
-    st.session_state.usuario_activo = None
-
-# --- MICRO-LECTOR DE JAVASCRIPT CORREGIDO ---
-# Este script solo se encarga de despertar la sesión la primera vez si encuentra datos reales
-if st.session_state.usuario_activo is None:
-    js_lector = """
-    <script>
-        const nombre = localStorage.getItem("nombre_usuario_ct_3b");
-        if (nombre && nombre !== "undefined" && nombre !== "null") {
-            window.parent.postMessage({type: "streamlit:setComponentValue", value: nombre}, "*");
-        }
-    </script>
-    """
-    respuesta_js = components.html(js_lector, height=0, width=0)
-    # Validamos estrictamente que sea una cadena de texto limpia antes de asignarla
-    if isinstance(respuesta_js, str) and respuesta_js not in ["", "None", "undefined"]:
-        st.session_state.usuario_activo = respuesta_js
-        st.rerun()
+# --- DETECCIÓN DE USUARIO POR ENLACE (URL) ---
+# Lee si al final de la dirección web dice "?user=Nombre"
+params = st.query_params
+usuario_url = params.get("user", None)
 
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
@@ -115,30 +98,27 @@ rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "�
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # CASO A: No hay sesión activa o se borró
-    if st.session_state.usuario_activo is None:
-        st.info("👋 Bienvenido. Selecciona tu nombre para configurar esta App de forma permanente en tu celular.")
+    # Si el enlace no tiene un usuario válido asignado
+    if usuario_url is None or usuario_url not in st.session_state.personal:
+        st.warning("⚠️ No has ingresado mediante un enlace personalizado.")
+        st.info("Por favor, selecciona tu nombre abajo para ver las instrucciones o pídele tu enlace al administrador:")
+        
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
-            if st.button("🔒 Recordar mi nombre en este celular", use_container_width=True):
-                st.session_state.usuario_activo = seleccion
-                # Forzamos el guardado físico inmediato en el navegador
-                js_guardar = f"""
-                <script>
-                    localStorage.setItem("nombre_usuario_ct_3b", "{seleccion}");
-                </script>
-                """
-                components.html(js_guardar, height=0, width=0)
-                st.success(f"¡Configurado exitosamente como {seleccion}!")
-                time.sleep(0.5)
-                st.rerun()
-                
-    # CASO B: Perfil activo con texto 100% limpio
+            # Detectamos la dirección base de la app automáticamente
+            st.markdown(f"""
+            ### 📝 Tu Enlace Permanente:
+            Copia el siguiente enlace, guárdalo en tus favoritos de WhatsApp o de tu navegador y úsalo **siempre** para entrar a la app sin que te vuelva a preguntar tu nombre:
+            
+            `https://cubre-turnos-3b.streamlit.app/?user={seleccion}`
+            """)
+    
+    # Si el enlace es correcto, entra de manera directa e inmediata
     else:
-        usuario_actual = str(st.session_state.usuario_activo)
-        st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
+        usuario_actual = usuario_url
+        st.success(f"👤 Perfil Activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
@@ -185,18 +165,6 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
             st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
-            
-        st.divider()
-        if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
-            st.session_state.usuario_activo = None
-            js_borrar = """
-            <script>
-                localStorage.removeItem("nombre_usuario_ct_3b");
-                window.parent.location.reload();
-            </script>
-            """
-            components.html(js_borrar, height=0, width=0)
-            st.rerun()
 
 # ==============================================================================
 # ⚙️ PANEL ADMINISTRATIVO (ANDRÉS)
@@ -215,6 +183,7 @@ else:
             "⚙️ Configurar Tiendas"
         ])
         
+        # TAB 1: REGISTRAR Y GENERAR ENLACES DIRECTOS
         with tab1:
             st.subheader("Registrar nuevo personal")
             with st.form("nuevo_ct_form", clear_on_submit=True):
@@ -236,6 +205,14 @@ else:
                         st.session_state.personal[nuevo_nombre] = turnos_lista
                         st.success(f"¡{nuevo_nombre} integrado al equipo temporalmente!")
                         st.rerun()
+            
+            st.divider()
+            st.subheader("🔗 Lista de Enlaces Personales para Enviar por WhatsApp")
+            st.info("Copia el enlace correspondiente a cada trabajador y envíaselo. Cuando den clic ahí, entrarán directo sin volver a loguearse.")
+            
+            for nombre_ct in sorted(list(st.session_state.personal.keys())):
+                link_personalizado = f"https://cubre-turnos-3b.streamlit.app/?user={nombre_ct}"
+                st.markdown(f"👤 **{nombre_ct}**: `{link_personalizado}`")
 
         with tab2:
             st.subheader("Mandar alerta de cobertura")
