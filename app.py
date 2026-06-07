@@ -62,7 +62,7 @@ if "personal" not in st.session_state:
         "Dulce": ["Día", "Noche"],
         "Leyver": ["Fijo 3B2"],
         "Azul": ["Fijo Mezquite"],
-        "CT Test": ["Día", "Noche"]  # <-- Agregado fijo en el código para tus pruebas
+        "CT Test": ["Día", "Noche"]
     }
 
 if "notificaciones" not in st.session_state:
@@ -207,44 +207,4 @@ else:
             dia_sel = st.selectbox("Día:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"])
             turno_sel = st.radio("Turno:", ["Día", "Noche"], horizontal=True)
             
-            ct_filtrados = [nombre for nombre, turnos in st.session_state.personal.items() if turno_sel in turnos]
-            ct_seleccionado = st.selectbox("Selecciona al CT destino:", ct_filtrados)
-            
-            if st.button("Enviar Alerta"):
-                st.session_state.notificaciones = {
-                    "tienda": tienda_sel,
-                    "dia": dia_sel,
-                    "turno": turno_sel,
-                    "historial_intentos": [ct_seleccionado],
-                    "ct_actual": ct_seleccionado,
-                    "estado": "pendiente"
-                }
-                st.session_state.confirmando_rechazo = False
-                st.success(f"Notificación activa para {ct_seleccionado}.")
-
-        with tab3:
-            st.subheader("Rastreo de Respuestas de Personal")
-            notif = st.session_state.notificaciones
-            
-            with st.container(border=True):
-                st.write(f"📍 **Turno Activo:** {notif['tienda']} ({notif['turno']})")
-                st.write(f"👤 **Asignado a:** {notif['ct_actual']} | 📊 **Estatus:** {notif['estado'].upper()}")
-                
-                if notif["estado"] == "pendiente":
-                    col_adm1, col_adm2 = st.columns(2)
-                    
-                    with col_adm1:
-                        if st.button("⏰ Tiempo Agotado / Falta Injustificada"):
-                            notif["estado"] = "rechazado"
-                            st.rerun()
-                            
-                    with col_adm2:
-                        if st.button("🤒 Procesar Falta Justificada (Aviso Anticipado)", type="primary"):
-                            notif["estado"] = "justificado_sistema"
-                            st.rerun()
-
-            if notif["estado"] in ["rechazado", "justificado_sistema"]:
-                st.warning("🔄 Buscando sustituto desocupado en automático...")
-                candidatos_libres = [
-                    nombre for nombre, turnos in st.session_state.personal.items()
-                    if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif
+            ct_filtrados =
