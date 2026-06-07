@@ -21,7 +21,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 def play_alarm_sound():
-    # Sonido de alarma insistente en bucle para el "despertador" PWA
     audio_html = """
         <audio autoplay loop>
             <source src="https://www.soundjay.com/buttons/beep-01a.mp3" type="audio/mpeg">
@@ -29,7 +28,7 @@ def play_alarm_sound():
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
-# --- 1. BASES DE DATOS EN MEMORIA (Sesión Activa) ---
+# --- 1. INICIALIZACIÓN DE BASES DE DATOS EN MEMORIA ---
 if "descansos_tiendas" not in st.session_state:
     st.session_state.descansos_tiendas = [
         {"Tienda": "Fusión", "Turno": "Día", "Día Descanso": "Domingo"},
@@ -61,7 +60,6 @@ if "personal" not in st.session_state:
     }
 
 if "notificaciones" not in st.session_state:
-    # Simulación de un turno inicial asignado para pruebas
     st.session_state.notificaciones = {
         "tienda": "3B5 Lomas Dos",
         "dia": "Martes",
@@ -71,7 +69,11 @@ if "notificaciones" not in st.session_state:
         "estado": "pendiente"
     }
 
-# --- 2. MENÚ LATERAL (Para cambiar de Rol) ---
+# Variable interna para controlar si mostramos la advertencia en pantalla
+if "confirmando_rechazo" not in st.session_state:
+    st.session_state.confirmando_rechazo = False
+
+# --- 2. MENÚ LATERAL ---
 st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
@@ -88,25 +90,51 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         st.divider()
         notif = st.session_state.notificaciones
 
-        # Lógica del "Despertador" si el usuario es el asignado actual y está pendiente
+        # Lógica del "Despertador" e Interfaz normal de solicitud
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
-            play_alarm_sound()  # Suena en bucle insistente
-            st.markdown('### <span class="badge-red"></span> ¡TIENES UN TURNO ASIGNADO URGENTE!', unsafe_allow_html=True)
             
-            with st.container(border=True):
-                st.error("🚨 ATENCIÓN: Confirma de inmediato tu asistencia para apagar la alarma.")
-                st.write(f"📍 **Tienda:** {notif['tienda']}")
-                st.write(f"📅 **Día:** {notif['dia']} | ⏰ **Turno:** {notif['turno']}")
+            # Si el usuario NO ha presionado rechazar todavía, se muestra la pantalla normal con la alarma
+            if not st.session_state.confirmando_rechazo:
+                play_alarm_sound()  
+                st.markdown('### <span class="badge-red"></span> ¡TIENES UN TURNO ASIGNADO URGENTE!', unsafe_allow_html=True)
                 
-                col1, col2 = st.columns(2)
-                if col1.button("✅ SÍ ME PRESENTARÉ", use_container_width=True):
-                    st.session_state.notificaciones["estado"] = "confirmado"
-                    st.success("¡Turno confirmado! Alarma desactivada.")
-                    st.balloons()
-                    st.rerun()
-                if col2.button("❌ NO PUEDO IR", use_container_width=True):
-                    st.session_state.notificaciones["estado"] = "rechazado"
-                    st.rerun()
+                with st.container(border=True):
+                    st.error("🚨 ATENCIÓN: Confirma de inmediato tu asistencia para apagar la alarma.")
+                    st.write(f"📍 **Tienda:** {notif['tienda']}")
+                    st.write(f"📅 **Día:** {notif['dia']} | ⏰ **Turno:** {notif['turno']}")
+                    
+                    col1, col2 = st.columns(2)
+                    if col1.button("✅ SÍ ME PRESENTARÉ", use_container_width=True):
+                        st.session_state.notificaciones["estado"] = "confirmado"
+                        st.success("¡Turno confirmado! Alarma desactivada.")
+                        st.balloons()
+                        st.rerun()
+                    if col2.button("❌ NO PUEDO IR", use_container_width=True):
+                        # En lugar de rechazar directo, activamos la advertencia
+                        st.session_state.confirmando_rechazo = True
+                        st.rerun()
+            
+            # SI PRESIONÓ RECHAZAR: Se oculta lo anterior y aparece el mensaje de advertencia
+            else:
+                st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
+                with st.container(border=True):
+                    st.write(f"⚠️ **{usuario_actual}**, piénsalo bien antes de confirmar:")
+                    st.error(
+                        "🛑 Al rechazar el turno tu posibilidad de que te dé otro turno queda en 10%, "
+                        "así que primero le darán turnos a los otros 9 antes que a ti."
+                    )
+                    st.write("¿Estás seguro de que deseas proceder con el rechazo y perder tu prioridad?")
+                    
+                    col_si, col_no = st.columns(2)
+                    if col_si.button("💥 SÍ, RECHAZAR Y PERDER PRIORIDAD", use_container_width=True):
+                        # Ahora sí procesamos el rechazo definitivo
+                        st.session_state.confirmando_rechazo = False
+                        st.session_state.notificaciones["estado"] = "rechazado"
+                        st.rerun()
+                    if col_no.button("🔙 REGRESAR Y ACEPTAR TURNO", use_container_width=True):
+                        # Cancelar el rechazo y regresar a la pantalla normal
+                        st.session_state.confirmando_rechazo = False
+                        st.rerun()
                     
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
@@ -173,6 +201,7 @@ else:
                     "ct_actual": ct_seleccionado,
                     "estado": "pendiente"
                 }
+                st.session_state.confirmando_rechazo = False # Resetear estado
                 st.success(f"Notificación activa para {ct_seleccionado}.")
 
         # TAB 3: MONITOR DE EMERGENCIAS Y REASIGNACIÓN AUTOMÁTICA
@@ -226,7 +255,7 @@ else:
                         item["Día Descanso"] = nuevo_dia_descanso
                         encontrado = True
                 if not encontrado:
-                    st.session_state.descansos_tiendas.append({"Tienda": fancy_name, "Turno": turno_a_modificar, "Día Descanso": nuevo_dia_descanso})
+                    st.session_state.descansos_tiendas.append({"Tienda": tienda_a_modificar, "Turno": turno_a_modificar, "Día Descanso": nuevo_dia_descanso})
                 st.success("¡Cambio guardado exitosamente!")
                 st.rerun()
                 
