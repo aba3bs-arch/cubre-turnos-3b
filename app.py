@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 import time
 import os
-# Importamos la librería con la sintaxis exacta para el servidor
-from streamlit_local_storage import st_local_storage
+import streamlit.components.v1 as components
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -11,9 +10,6 @@ if os.path.exists(logo_path):
     st.set_page_config(page_title="Las 3B - Roles", page_icon=logo_path, layout="wide", initial_sidebar_state="collapsed")
 else:
     st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
-
-# Inicializamos el gestor de almacenamiento local del celular en minúsculas
-local_storage = st_local_storage()
 
 # --- ESTILOS VISUALES (Punto rojo parpadeante) ---
 st.markdown("""
@@ -83,6 +79,24 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
+# Usamos el session_state interno para el puente de JS a Python
+if "usuario_detectado" not in st.session_state:
+    st.session_state.usuario_detectado = "BUSCANDO"
+
+# --- PUENTE JAVASCRIPT NATIVO PARA LEER LA MEMORIA DEL TELÉFONO ---
+js_lector = """
+<script>
+    const nombre = localStorage.getItem("nombre_usuario_ct_3b") || "NO_HAY";
+    parent.postMessage({type: "streamlit:setComponentValue", value: nombre}, "*");
+</script>
+"""
+# Al ejecutar este micro-componente, nos regresa lo que tenga el cel guardado
+js_response = components.html(js_lector, height=0, width=0)
+
+if js_response and st.session_state.usuario_detectado == "BUSCANDO":
+    st.session_state.usuario_detectado = js_response
+    st.rerun()
+
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
 with col_logo2:
@@ -93,30 +107,34 @@ st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
 # ==============================================================================
-# 📱 PANEL DE USUARIOS (CUBRE TURNOS) CON MEMORIA LOCAL COMPATIBLE
+# 📱 PANEL DE USUARIOS (CUBRE TURNOS)
 # ==============================================================================
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # Intentamos obtener el valor guardado en el almacenamiento local del celular
-    usuario_guardado = local_storage.get(key="nombre_usuario_ct_3b")
-    
-    # CASO A: Si el teléfono no tiene memoria registrada, se identifica por primera vez
-    if usuario_guardado is None or usuario_guardado == "":
+    # CASO A: No hay memoria en el cel, pide seleccionar el nombre
+    if st.session_state.usuario_detectado in ["NO_HAY", "BUSCANDO"]:
         st.info("👋 Bienvenido. Selecciona tu nombre para configurar esta App de forma permanente en tu celular.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
             if st.button("🔒 Recordar mi nombre en este celular", use_container_width=True):
-                local_storage.set(key="nombre_usuario_ct_3b", value=seleccion)
-                st.success(f"¡Configurado! Guardando perfil de {seleccion}...")
+                # Inyectamos el guardado directo en el disco del navegador
+                js_guardar = f"""
+                <script>
+                    localStorage.setItem("nombre_usuario_ct_3b", "{seleccion}");
+                    window.parent.location.reload();
+                </script>
+                """
+                components.html(js_guardar, height=0, width=0)
+                st.success("Guardando perfil...")
                 time.sleep(1)
                 st.rerun()
                 
-    # CASO B: El celular ya tiene la memoria grabada, entra directo aunque reinicien la pestaña
+    # CASO B: El cel ya tiene el nombre grabado, entra directo SIEMPRE
     else:
-        usuario_actual = usuario_guardado
+        usuario_actual = st.session_state.usuario_detectado
         st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
@@ -167,7 +185,14 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
             
         st.divider()
         if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
-            local_storage.set(key="nombre_usuario_ct_3b", value="") # Limpiamos la memoria local
+            js_borrar = """
+            <script>
+                localStorage.removeItem("nombre_usuario_ct_3b");
+                window.parent.location.reload();
+            </script>
+            """
+            components.html(js_borrar, height=0, width=0)
+            st.session_state.usuario_detectado = "BUSCANDO"
             st.rerun()
 
 # ==============================================================================
