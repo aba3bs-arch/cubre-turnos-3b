@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import time
 import os
+# Importamos la librería para usar la memoria nativa del celular
+from streamlit_local_storage import StLocalStorage
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -9,6 +11,9 @@ if os.path.exists(logo_path):
     st.set_page_config(page_title="Las 3B - Roles", page_icon=logo_path, layout="wide", initial_sidebar_state="collapsed")
 else:
     st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
+
+# Inicializamos el gestor de almacenamiento local del celular
+local_storage = StLocalStorage()
 
 # --- ESTILOS VISUALES (Punto rojo parpadeante) ---
 st.markdown("""
@@ -78,9 +83,6 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
-if "usuario_activo" not in st.session_state:
-    st.session_state.usuario_activo = None
-
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
 with col_logo2:
@@ -91,29 +93,33 @@ st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
 # ==============================================================================
-# 📱 PANEL DE USUARIOS (CUBRE TURNOS)
+# 📱 PANEL DE USUARIOS (CUBRE TURNOS) CON MEMORIA LOCAL PERMANENTE
 # ==============================================================================
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # Si el usuario no ha iniciado sesión en esta pestaña abierta, le pedimos identificarse
-    if st.session_state.usuario_activo is None:
-        st.info("👋 Bienvenido. Selecciona tu nombre para ingresar a tus notificaciones de hoy.")
+    # Intentamos obtener el valor guardado en el disco duro del teléfono móvil
+    usuario_guardado = local_storage.get(key="nombre_usuario_ct_3b")
+    
+    # CASO A: Si el teléfono no tiene memoria registrada, se identifica por primera vez
+    if usuario_guardado is None or usuario_guardado == "":
+        st.info("👋 Bienvenido. Selecciona tu nombre para configurar esta App de forma permanente en tu celular.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
-            if st.button("🔒 Entrar a mi Perfil", use_container_width=True):
-                st.session_state.usuario_activo = seleccion
+            if st.button("🔒 Recordar mi nombre en este celular", use_container_width=True):
+                local_storage.set(key="nombre_usuario_ct_3b", value=seleccion)
+                st.success(f"¡Configurado! Guardando perfil de {seleccion}...")
+                time.sleep(1)
                 st.rerun()
                 
-    # Si la sesión ya está activa, entra directo a sus datos sin mostrar a los demás
+    # CASO B: El celular ya tiene la cookie grabada, entra directo aunque reinicien la pestaña
     else:
-        usuario_actual = st.session_state.usuario_activo
-        st.caption(f"👤 Perfil activo: **{usuario_actual}**")
+        usuario_actual = usuario_guardado
+        st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
-        # Lógica de Alertas / Despertador Urgente
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
             if not st.session_state.confirmando_rechazo:
                 play_alarm_sound()  
@@ -134,7 +140,6 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                         st.session_state.confirmando_rechazo = True
                         st.rerun()
             else:
-                # Bloque de Advertencia Psicológica por Rechazo Injustificado
                 st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
                 with st.container(border=True):
                     st.write(f"⚠️ **{usuario_actual}**, piénsalo bien antes de confirmar:")
@@ -156,13 +161,13 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
         elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
-            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada. ¡Recupérate pronto!")
+            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
         st.divider()
-        if st.button("👤 Cerrar Sesión / Cambiar de Perfil", key="logout_btn"):
-            st.session_state.usuario_activo = None
+        if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
+            local_storage.set(key="nombre_usuario_ct_3b", value="") # Limpiamos la memoria local
             st.rerun()
 
 # ==============================================================================
@@ -182,7 +187,6 @@ else:
             "⚙️ Configurar Tiendas"
         ])
         
-        # TAB 1: REGISTRAR NUEVOS CUBRE TURNOS
         with tab1:
             st.subheader("Registrar nuevo personal")
             with st.form("nuevo_ct_form", clear_on_submit=True):
@@ -205,7 +209,6 @@ else:
                         st.success(f"¡{nuevo_nombre} integrado al equipo temporalmente!")
                         st.rerun()
 
-        # TAB 2: ENVIAR SOLICITUDES DE COBERTURA
         with tab2:
             st.subheader("Mandar alerta de cobertura")
             lista_tiendas_disponibles = sorted(list(set([t["Tienda"] for t in st.session_state.descansos_tiendas])))
@@ -228,7 +231,6 @@ else:
                 st.session_state.confirmando_rechazo = False
                 st.success(f"Notificación activa para {ct_seleccionado}.")
 
-        # TAB 3: MONITOR DE EMERGENCIAS Y INCIDENCIAS
         with tab3:
             st.subheader("Rastreo de Respuestas de Personal")
             notif = st.session_state.notificaciones
@@ -250,10 +252,8 @@ else:
                             notif["estado"] = "justificado_sistema"
                             st.rerun()
 
-            # Lógica de sustitución automática (Se activa por falta o por aviso justificado)
             if notif["estado"] in ["rechazado", "justificado_sistema"]:
                 st.warning("🔄 Buscando sustituto desocupado en automático...")
-                
                 candidatos_libres = [
                     nombre for nombre, turnos in st.session_state.personal.items()
                     if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif["turno"] == "Día" and "Domingo Día" in turnos))
@@ -271,7 +271,6 @@ else:
                 else:
                     st.error("❌ CRÍTICO: ¡No queda personal disponible para cubrir este turno hoy!")
 
-        # TAB 4: PANEL DE MODIFICACIÓN DE DESCANSOS
         with tab4:
             st.subheader("Configuración de Descansos de Sucursales")
             df_actual = pd.DataFrame(st.session_state.descansos_tiendas)
