@@ -17,6 +17,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 def play_voice_alert():
+    # Sonido de alerta corto al detectar un turno pendiente
     audio_html = """
         <audio autoplay>
             <source src="https://www.soundjay.com/buttons/beep-01a.mp3" type="audio/mpeg">
@@ -43,63 +44,4 @@ descansos_data = [
     {"Tienda": "3B10 El Mezquite", "Turno": "Día", "Día Descanso": "Domingo"},
     {"Tienda": "3B10 El Mezquite", "Turno": "Noche", "Día Descanso": "Lunes"},
 ]
-df_descansos = pd.DataFrame(descansos_data)
-
-# --- 2. CONFIGURACIÓN DEL PERSONAL GENERAL ---
-# Leyver y Azul ya no están aquí porque tienen sus propias reglas automáticas
-personal_general = {
-    "Sofía": ["Día", "Noche"],
-    "Esmeralda": ["Día", "Noche"],
-    "Luz": ["Domingo Día"],
-    "Jenny": ["Día", "Noche"],
-    "Nicol": ["Día", "Noche"],
-    "Kenia": ["Día", "Noche"]
-}
-
-# --- 3. SIMULACIÓN DE NOTIFICACIONES (Simula los pendientes de la semana) ---
-if "notificaciones" not in st.session_state:
-    st.session_state.notificaciones = {
-        "Leyver": {"tienda": "3B2 Pueblo Nuevo", "dia": "Domingo", "turno": "Día", "estado": "pendiente"},
-        "Azul": {"tienda": "3B10 El Mezquite", "dia": "Sábado/Domingo", "turno": "Día", "estado": "pendiente"},
-        "Sofía": None, "Esmeralda": None, "Jenny": None, "Luz": None, "Nicol": None, "Kenia": None
-    }
-
-# --- 4. ACCESO DE EMPLEADOS ---
-usuario_actual = st.selectbox("👤 Selecciona tu nombre para ingresar:", 
-                             ["Selecciona...", "Leyver", "Azul", "Sofía", "Esmeralda", "Jenny", "Luz", "Nicol", "Kenia"])
-
-if usuario_actual != "Selecciona...":
-    st.divider()
-    notif = st.session_state.notificaciones.get(usuario_actual)
-
-    if notif and notif["estado"] == "pendiente":
-        play_voice_alert()
-        st.markdown('### <span class="badge-red"></span> ¡TIENES UN TURNO ASIGNADO!', unsafe_allow_html=True)
-        
-        with st.container(border=True):
-            st.warning(f"Hola **{usuario_actual}**, confirma tu asistencia para tu turno fijo:")
-            st.write(f"📍 **Tienda:** {notif['tienda']}")
-            st.write(f"📅 **Día:** {notif['dia']}")
-            st.write(f"⏰ **Turno:** {notif['turno']}")
-            
-            col1, col2 = st.columns(2)
-            if col1.button("✅ CONFIRMAR ASISTENCIA", use_container_width=True):
-                st.session_state.notificaciones[usuario_actual]["estado"] = "confirmado"
-                st.success("¡Gracias! Turno confirmado.")
-                st.balloons()
-                st.rerun()
-            if col2.button("❌ RECHAZAR (Aviso a Admin)", use_container_width=True):
-                st.session_state.notificaciones[usuario_actual]["estado"] = "rechazado"
-                st.error("Has rechazado el turno. Se envió una alerta a administración.")
-                st.rerun()
-                
-    elif notif and notif["estado"] == "confirmado":
-        st.success(f"🔒 Tienes tu turno asignado fijo en **{notif['tienda']}**.")
-    else:
-        st.success("✨ No tienes solicitudes pendientes por responder.")
-
-# --- 5. PANEL DE CONTROL ADMINISTRADOR ---
-st.divider()
-with st.expander("⚙️ Panel de Control (Solo Andrés)"):
-    st.subheader(index=None, body="Estatus de Asignaciones y Confirmaciones")
-    st.json(st.session_state.notificaciones)
+df_descansos = pd
