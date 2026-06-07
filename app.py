@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import time
 import os
-# Importamos la librería para usar la memoria nativa del celular
-from streamlit_local_storage import StLocalStorage
+# Importamos la librería con la sintaxis exacta para el servidor
+from streamlit_local_storage import st_local_storage
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -12,8 +12,8 @@ if os.path.exists(logo_path):
 else:
     st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
 
-# Inicializamos el gestor de almacenamiento local del celular
-local_storage = StLocalStorage()
+# Inicializamos el gestor de almacenamiento local del celular en minúsculas
+local_storage = st_local_storage()
 
 # --- ESTILOS VISUALES (Punto rojo parpadeante) ---
 st.markdown("""
@@ -93,12 +93,12 @@ st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
 # ==============================================================================
-# 📱 PANEL DE USUARIOS (CUBRE TURNOS) CON MEMORIA LOCAL PERMANENTE
+# 📱 PANEL DE USUARIOS (CUBRE TURNOS) CON MEMORIA LOCAL COMPATIBLE
 # ==============================================================================
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # Intentamos obtener el valor guardado en el disco duro del teléfono móvil
+    # Intentamos obtener el valor guardado en el almacenamiento local del celular
     usuario_guardado = local_storage.get(key="nombre_usuario_ct_3b")
     
     # CASO A: Si el teléfono no tiene memoria registrada, se identifica por primera vez
@@ -114,7 +114,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                 time.sleep(1)
                 st.rerun()
                 
-    # CASO B: El celular ya tiene la cookie grabada, entra directo aunque reinicien la pestaña
+    # CASO B: El celular ya tiene la memoria grabada, entra directo aunque reinicien la pestaña
     else:
         usuario_actual = usuario_guardado
         st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
@@ -161,7 +161,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
         elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
-            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
+            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada. ¡Recupérate pronto!")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
