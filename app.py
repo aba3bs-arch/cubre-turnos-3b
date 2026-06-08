@@ -27,7 +27,7 @@ st.markdown("""
 
 def play_alarm_sound():
     audio_html = """
-        <audio autoplay loop>
+        <audio autoplay loop id="alarm-audio">
             <source src="https://www.soundjay.com/buttons/beep-01a.mp3" type="audio/mpeg">
         </audio>
     """
@@ -78,7 +78,6 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
-# Sistema de login nativo y estable por sesión
 if "usuario_activo" not in st.session_state:
     st.session_state.usuario_activo = None
 
@@ -97,24 +96,45 @@ rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "�
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # Si no ha seleccionado su perfil, le mostramos el inicio de sesión nativo
     if st.session_state.usuario_activo is None:
-        st.info("👋 Bienvenido. Selecciona tu nombre para ingresar a tu panel de coberturas de hoy.")
+        st.info("👋 Bienvenido. Configura tus permisos de sonido e ingresa a tu cuenta.")
+        
+        # --- GUÍA VISUAL PARA CONFIGURAR EL NAVEGADOR ---
+        with st.expander("📢 INSTRUCCIONES: Cómo activar el sonido en tu celular (Obligatorio)"):
+            st.markdown("""
+            Para que el despertador de turnos urgentes funcione correctamente en tu teléfono, sigue estos pasos según tu navegador:
+            
+            * **En Google Chrome (Android):**
+              1. Toca los **3 puntos** arriba a la derecha de la pantalla.
+              2. Ve a **Configuración** ➔ **Configuración de sitios**.
+              3. Busca la opción **Sonido** y asegúrate de que esté en **Permitir**.
+            
+            * **En Safari (iPhone):**
+              1. Ve a los **Ajustes** generales de tu iPhone.
+              2. Busca **Safari** ➔ **Ajustes de sitios web** ➔ **Cámara/Micrófono/Sonido**.
+              3. Selecciona **Permitir siempre**.
+            """)
+            
+            # Botón interactivo para forzar la primera reproducción y saltarse el bloqueo
+            if st.button("🎵 Probar sonido del celular ahora mismo", use_container_width=True):
+                st.success("Sonido desbloqueado. Si no escuchas nada, revisa el volumen o los permisos de arriba.")
+                play_alarm_sound()
+
+        st.divider()
+        
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
-            if st.button("🔒 Ingresar a mi Perfil Directo", use_container_width=True):
+            if st.button("🔒 Conceder Permiso e Ingresar al Perfil", use_container_width=True, type="primary"):
                 st.session_state.usuario_activo = seleccion
                 st.rerun()
                 
-    # Si ya dio clic al botón, entra de manera limpia sin tocar la URL
     else:
         usuario_actual = st.session_state.usuario_activo
         st.caption(f"👤 Perfil activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
-        # Simulador para tu prueba administrativa con CT Test
         if usuario_actual == "CT Test":
             notif["ct_actual"] = "CT Test"
             notif["estado"] = "pendiente"
