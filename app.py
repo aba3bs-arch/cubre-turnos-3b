@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import time
 import os
-# Importamos la librería con la sintaxis exacta para el servidor
-from streamlit_local_storage import st_local_storage
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -11,9 +9,6 @@ if os.path.exists(logo_path):
     st.set_page_config(page_title="Las 3B - Roles", page_icon=logo_path, layout="wide", initial_sidebar_state="collapsed")
 else:
     st.set_page_config(page_title="Las 3B - Roles", layout="wide", initial_sidebar_state="collapsed")
-
-# Inicializamos el gestor de almacenamiento local del celular en minúsculas
-local_storage = st_local_storage()
 
 # --- ESTILOS VISUALES (Punto rojo parpadeante) ---
 st.markdown("""
@@ -83,6 +78,10 @@ if "notificaciones" not in st.session_state:
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
+# Sistema de login nativo y estable por sesión
+if "usuario_activo" not in st.session_state:
+    st.session_state.usuario_activo = None
+
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
 with col_logo2:
@@ -93,32 +92,32 @@ st.title("🏪 Sistema Las 3B")
 rol_panel = st.sidebar.radio("Navegación:", ["📱 Panel de Usuarios (CT)", "⚙️ Panel Administrativo"])
 
 # ==============================================================================
-# 📱 PANEL DE USUARIOS (CUBRE TURNOS) CON MEMORIA LOCAL COMPATIBLE
+# 📱 PANEL DE USUARIOS (CUBRE TURNOS)
 # ==============================================================================
 if rol_panel == "📱 Panel de Usuarios (CT)":
     st.header("Portal de Personal")
     
-    # Intentamos obtener el valor guardado en el almacenamiento local del celular
-    usuario_guardado = local_storage.get(key="nombre_usuario_ct_3b")
-    
-    # CASO A: Si el teléfono no tiene memoria registrada, se identifica por primera vez
-    if usuario_guardado is None or usuario_guardado == "":
-        st.info("👋 Bienvenido. Selecciona tu nombre para configurar esta App de forma permanente en tu celular.")
+    # Si no ha seleccionado su perfil, le mostramos el inicio de sesión nativo
+    if st.session_state.usuario_activo is None:
+        st.info("👋 Bienvenido. Selecciona tu nombre para ingresar a tu panel de coberturas de hoy.")
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
         if seleccion != "Selecciona tu nombre...":
-            if st.button("🔒 Recordar mi nombre en este celular", use_container_width=True):
-                local_storage.set(key="nombre_usuario_ct_3b", value=seleccion)
-                st.success(f"¡Configurado! Guardando perfil de {seleccion}...")
-                time.sleep(1)
+            if st.button("🔒 Ingresar a mi Perfil Directo", use_container_width=True):
+                st.session_state.usuario_activo = seleccion
                 st.rerun()
                 
-    # CASO B: El celular ya tiene la memoria grabada, entra directo aunque reinicien la pestaña
+    # Si ya dio clic al botón, entra de manera limpia sin tocar la URL
     else:
-        usuario_actual = usuario_guardado
-        st.caption(f"👤 Perfil activo en este celular: **{usuario_actual}**")
+        usuario_actual = st.session_state.usuario_activo
+        st.caption(f"👤 Perfil activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
+
+        # Simulador para tu prueba administrativa con CT Test
+        if usuario_actual == "CT Test":
+            notif["ct_actual"] = "CT Test"
+            notif["estado"] = "pendiente"
 
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
             if not st.session_state.confirmando_rechazo:
@@ -161,13 +160,13 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
             st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
         elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
-            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada. ¡Recupérate pronto!")
+            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
         st.divider()
         if st.button("👤 Cambiar de Usuario / Cerrar Sesión", key="logout_btn"):
-            local_storage.set(key="nombre_usuario_ct_3b", value="") # Limpiamos la memoria local
+            st.session_state.usuario_activo = None
             st.rerun()
 
 # ==============================================================================
