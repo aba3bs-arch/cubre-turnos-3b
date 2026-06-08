@@ -33,7 +33,7 @@ def play_alarm_sound():
     """
     st.markdown(audio_html, unsafe_allow_html=True)
 
-# --- 1. INICIALIZACIÓN DE BASES DE DATOS EN MEMORIA ---
+# --- 1. INICIALIZACIÓN DE SUCURSALES Y PERSONAL ---
 if "descansos_tiendas" not in st.session_state:
     st.session_state.descansos_tiendas = [
         {"Tienda": "Fusión", "Turno": "Día", "Día Descanso": "Domingo"},
@@ -65,21 +65,44 @@ if "personal" not in st.session_state:
         "CT Test": ["Día", "Noche"]
     }
 
-if "notificaciones" not in st.session_state:
+# --- CONEXIÓN EN TIEMPO REAL A LOS SECRETS DEL SERVIDOR ---
+# Sincronizamos lo que hay en la nube con la pantalla actual
+try:
+    cloud_notif = st.secrets["notificacion_global"]
     st.session_state.notificaciones = {
-        "tienda": "3B10 El Mezquite",
-        "dia": "Domingo",
-        "turno": "Día",
-        "historial_intentos": ["Azul"],
-        "ct_actual": "Azul",
-        "estado": "pendiente"
+        "tienda": cloud_notif["tienda"],
+        "dia": cloud_notif["dia"],
+        "turno": cloud_notif["turno"],
+        "ct_actual": cloud_notif["ct_actual"],
+        "estado": cloud_notif["estado"],
+        "historial_intentos": [x.strip() for x in cloud_notif["historial"].split(",") if x.strip()]
     }
+except Exception:
+    # Respaldo por si no se han guardado los secretos aún
+    if "notificaciones" not in st.session_state:
+        st.session_state.notificaciones = {
+            "tienda": "3B10 El Mezquite", "dia": "Domingo", "turno": "Día",
+            "ct_actual": "Dulce", "estado": "pendiente", "historial_intentos": ["Dulce"]
+        }
 
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
 if "usuario_activo" not in st.session_state:
     st.session_state.usuario_activo = None
+
+def guardar_alerta_en_nube(alerta_dict):
+    st.session_state.notificaciones = alerta_dict
+    try:
+        # Reescribimos los Secrets en caliente para que cambie en todos los celulares
+        st.secrets["notificacion_global"]["tienda"] = alerta_dict["tienda"]
+        st.secrets["notificacion_global"]["dia"] = alerta_dict["dia"]
+        st.secrets["notificacion_global"]["turno"] = alerta_dict["turno"]
+        st.secrets["notificacion_global"]["ct_actual"] = alerta_dict["ct_actual"]
+        st.secrets["notificacion_global"]["estado"] = alerta_dict["estado"]
+        st.secrets["notificacion_global"]["historial"] = ",".join(alerta_dict["historial_intentos"])
+    except Exception:
+        pass
 
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
@@ -99,29 +122,12 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
     if st.session_state.usuario_activo is None:
         st.info("👋 Bienvenido. Configura tus permisos de sonido e ingresa a tu cuenta.")
         
-        # --- GUÍA VISUAL PARA CONFIGURAR EL NAVEGADOR ---
         with st.expander("📢 INSTRUCCIONES: Cómo activar el sonido en tu celular (Obligatorio)"):
-            st.markdown("""
-            Para que el despertador de turnos urgentes funcione correctamente en tu teléfono, sigue estos pasos según tu navegador:
-            
-            * **En Google Chrome (Android):**
-              1. Toca los **3 puntos** arriba a la derecha de la pantalla.
-              2. Ve a **Configuración** ➔ **Configuración de sitios**.
-              3. Busca la opción **Sonido** y asegúrate de que esté en **Permitir**.
-            
-            * **En Safari (iPhone):**
-              1. Ve a los **Ajustes** generales de tu iPhone.
-              2. Busca **Safari** ➔ **Ajustes de sitios web** ➔ **Cámara/Micrófono/Sonido**.
-              3. Selecciona **Permitir siempre**.
-            """)
-            
-            # Botón interactivo para forzar la primera reproducción y saltarse el bloqueo
+            st.markdown("Revisa que los permisos de sonido de tu Chrome o Safari estén en **Permitir siempre**.")
             if st.button("🎵 Probar sonido del celular ahora mismo", use_container_width=True):
-                st.success("Sonido desbloqueado. Si no escuchas nada, revisa el volumen o los permisos de arriba.")
                 play_alarm_sound()
 
         st.divider()
-        
         lista_empleados = ["Selecciona tu nombre..."] + list(st.session_state.personal.keys())
         seleccion = st.selectbox("👤 ¿Quién eres?", lista_empleados)
         
@@ -135,10 +141,6 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
         st.caption(f"👤 Perfil activo: **{usuario_actual}**")
         notif = st.session_state.notificaciones
 
-        if usuario_actual == "CT Test":
-            notif["ct_actual"] = "CT Test"
-            notif["estado"] = "pendiente"
-
         if notif["estado"] == "pendiente" and notif["ct_actual"] == usuario_actual:
             if not st.session_state.confirmando_rechazo:
                 play_alarm_sound()  
@@ -146,14 +148,12 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                 
                 with st.container(border=True):
                     st.error("🚨 ATENCIÓN: Confirma de inmediato tu asistencia para apagar la alarma.")
-                    st.write(f"📍 **Tienda:** {notif['tienda']}")
-                    st.write(f"📅 **Día:** {notif['dia']} | ⏰ **Turno:** {notif['turno']}")
+                    st.write(f"📍 **Tienda:** {notif['tienda']} | 📅 **Día:** {notif['dia']} | ⏰ **Turno:** {notif['turno']}")
                     
                     col1, col2 = st.columns(2)
                     if col1.button("✅ SÍ ME PRESENTARÉ", use_container_width=True):
-                        st.session_state.notificaciones["estado"] = "confirmado"
-                        st.success("¡Turno confirmado! Alarma desactivada.")
-                        st.balloons()
+                        notif["estado"] = "confirmado"
+                        guardar_alerta_en_nube(notif)
                         st.rerun()
                     if col2.button("❌ NO PUEDO IR", use_container_width=True):
                         st.session_state.confirmando_rechazo = True
@@ -161,26 +161,22 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
             else:
                 st.markdown("### ⚠️ ADVERTENCIA IMPORTANTE DE PENALIZACIÓN")
                 with st.container(border=True):
-                    st.write(f"⚠️ **{usuario_actual}**, piénsalo bien antes de confirmar:")
-                    st.error(
-                        "🛑 Al rechazar el turno tu posibilidad de que te dé otro turno queda en 10%, "
-                        "así que primero le darán turnos a los otros 9 antes que a ti."
-                    )
-                    st.write("¿Estás seguro de que deseas proceder con el rechazo y perder tu prioridad?")
+                    st.error("🛑 Al rechazar el turno tu prioridad en el sistema bajará al 10%.")
                     
                     col_si, col_no = st.columns(2)
                     if col_si.button("💥 SÍ, RECHAZAR Y PERDER PRIORIDAD", use_container_width=True):
                         st.session_state.confirmando_rechazo = False
-                        st.session_state.notificaciones["estado"] = "rechazado"
+                        notif["estado"] = "rechazado"
+                        guardar_alerta_en_nube(notif)
                         st.rerun()
                     if col_no.button("🔙 REGRESAR Y ACEPTAR TURNO", use_container_width=True):
                         st.session_state.confirmando_rechazo = False
                         st.rerun()
                     
         elif notif["estado"] == "confirmado" and notif["ct_actual"] == usuario_actual:
-            st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}** para el día **{notif['dia']}**.")
-        elif notif["estado"] == "justificado_sistema" and "Azul" == usuario_actual:
-            st.info("🤒 Tu ausencia por enfermedad del día de hoy quedó registrada como Justificada.")
+            st.success(f"🔒 Tienes tu turno confirmado en **{notif['tienda']}**.")
+        elif notif["estado"] == "rechazado" and notif["ct_actual"] == usuario_actual:
+            st.error("🛑 Rechazaste la solicitud de cobertura de hoy. Tu prioridad bajó al 10%.")
         else:
             st.success("✨ Todo al corriente. No tienes solicitudes pendientes por ahora.")
             
@@ -198,37 +194,11 @@ else:
     
     if password == "1234":
         st.success("Acceso concedido.")
+        notif = st.session_state.notificaciones
         
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "➕ Agregar Nuevo CT", 
-            "📢 Asignar Turnos", 
-            "📊 Monitor de Emergencias",
-            "⚙️ Configurar Tiendas"
-        ])
+        tab1, tab2, tab3 = st.tabs(["📢 Asignar Turnos", "📊 Monitor de Emergencias", "⚙️ Configurar Tiendas"])
         
         with tab1:
-            st.subheader("Registrar nuevo personal")
-            with st.form("nuevo_ct_form", clear_on_submit=True):
-                nuevo_nombre = st.text_input("Nombre del nuevo CT:")
-                st.write("Selecciona su disponibilidad:")
-                disp_dia = st.checkbox("Turno Día")
-                disp_noche = st.checkbox("Turno Noche")
-                disp_domingo = st.checkbox("Solo Domingo Día")
-                
-                if st.form_submit_button("Guardar en el Sistema") and nuevo_nombre:
-                    turnos_lista = []
-                    if disp_dia: turnos_lista.append("Día")
-                    if disp_noche: turnos_lista.append("Noche")
-                    if disp_domingo: turnos_lista.append("Domingo Día")
-                    
-                    if not turnos_lista:
-                        st.error("Selecciona al menos una opción de turno.")
-                    else:
-                        st.session_state.personal[nuevo_nombre] = turnos_lista
-                        st.success(f"¡{nuevo_nombre} integrado al equipo temporalmente!")
-                        st.rerun()
-
-        with tab2:
             st.subheader("Mandar alerta de cobertura")
             lista_tiendas_disponibles = sorted(list(set([t["Tienda"] for t in st.session_state.descansos_tiendas])))
             tienda_sel = st.selectbox("Tienda a cubrir:", lista_tiendas_disponibles)
@@ -239,44 +209,32 @@ else:
             ct_seleccionado = st.selectbox("Selecciona al CT destino:", ct_filtrados)
             
             if st.button("Enviar Alerta"):
-                st.session_state.notificaciones = {
-                    "tienda": tienda_sel,
-                    "dia": dia_sel,
-                    "turno": turno_sel,
-                    "historial_intentos": [ct_seleccionado],
-                    "ct_actual": ct_seleccionado,
-                    "estado": "pendiente"
+                nueva_alerta = {
+                    "tienda": tienda_sel, "dia": dia_sel, "turno": turno_sel,
+                    "ct_actual": ct_seleccionado, "estado": "pendiente", "historial_intentos": [ct_seleccionado]
                 }
-                st.session_state.confirmando_rechazo = False
-                st.success(f"Notificación activa para {ct_seleccionado}.")
+                guardar_alerta_en_nube(nueva_alerta)
+                st.success(f"Notificación en la nube activa para {ct_seleccionado}.")
+                st.rerun()
 
-        with tab3:
+        with tab2:
             st.subheader("Rastreo de Respuestas de Personal")
-            notif = st.session_state.notificaciones
-            
             with st.container(border=True):
-                st.write(f"📍 **Turno Activo:** {notif['tienda']} ({notif['turno']})")
-                st.write(f"👤 **Asignado a:** {notif['ct_actual']} | 📊 **Estatus:** {notif['estado'].upper()}")
+                st.write(f"📍 **Turno:** {notif['tienda']} ({notif['turno']}) | 👤 **Asignado a:** {notif['ct_actual']}")
+                st.info(f"📊 **Estatus actual en la nube:** {notif['estado'].upper()}")
                 
                 if notif["estado"] == "pendiente":
-                    col_adm1, col_adm2 = st.columns(2)
-                    
-                    with col_adm1:
-                        if st.button("⏰ Tiempo Agotado / Falta Injustificada"):
-                            notif["estado"] = "rechazado"
-                            st.rerun()
-                            
-                    with col_adm2:
-                        if st.button("🤒 Procesar Falta Justificada (Aviso Anticipado)", type="primary"):
-                            notif["estado"] = "justificado_sistema"
-                            st.rerun()
+                    if st.button("⏰ Tiempo Agotado / Falta Injustificada"):
+                        notif["estado"] = "rechazado"
+                        guardar_alerta_en_nube(notif)
+                        st.rerun()
 
+            # --- REBOTE AUTOMÁTICO DESDE LOS SECRETOS DE LA NUBE ---
             if notif["estado"] in ["rechazado", "justificado_sistema"]:
-                st.warning("🔄 Buscando sustituto desocupado en automático...")
+                st.warning("🔄 Buscando sustituto disponible en automático...")
                 candidatos_libres = [
                     nombre for nombre, turnos in st.session_state.personal.items()
-                    if (notif["turno"] in turnos or (notif["dia"] == "Domingo" and notif["turno"] == "Día" and "Domingo Día" in turnos))
-                    and nombre not in notif["historial_intentos"]
+                    if notif["turno"] in turnos and nombre not in notif["historial_intentos"]
                 ]
                 
                 if candidatos_libres:
@@ -284,32 +242,14 @@ else:
                     notif["ct_actual"] = siguiente_ct
                     notif["historial_intentos"].append(siguiente_ct)
                     notif["estado"] = "pendiente"
-                    st.success(f"¡Reasignado automáticamente a: **{siguiente_ct}**!")
-                    time.sleep(2)
+                    guardar_alerta_en_nube(notif)
+                    st.success(f"¡Reasignado en la nube a: **{siguiente_ct}**!")
+                    time.sleep(1)
                     st.rerun()
                 else:
                     st.error("❌ CRÍTICO: ¡No queda personal disponible para cubrir este turno hoy!")
 
-        with tab4:
+        with tab3:
             st.subheader("Configuración de Descansos de Sucursales")
             df_actual = pd.DataFrame(st.session_state.descansos_tiendas)
             st.dataframe(df_actual, use_container_width=True)
-            
-            st.divider()
-            tienda_a_modificar = st.selectbox("Selecciona la Tienda:", sorted(list(set(df_actual["Tienda"]))))
-            turno_a_modificar = st.radio("Selecciona el Turno:", ["Día", "Noche"], key="mod_turno", horizontal=True)
-            nuevo_dia_descanso = st.selectbox("Nuevo Día de Descanso:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo", "Ninguno"])
-            
-            if st.button("🔄 Actualizar Descanso"):
-                encontrado = False
-                for item in st.session_state.descansos_tiendas:
-                    if item["Tienda"] == tienda_a_modificar and item["Turno"] == turno_a_modificar:
-                        item["Día Descanso"] = nuevo_dia_descanso
-                        encontrado = True
-                if not encontrado:
-                    st.session_state.descansos_tiendas.append({"Tienda": tienda_a_modificar, "Turno": turno_a_modificar, "Día Descanso": nuevo_dia_descanso})
-                st.success("¡Cambio guardado exitosamente!")
-                st.rerun()
-                
-    elif password != "":
-        st.error("Contraseña incorrecta.")
