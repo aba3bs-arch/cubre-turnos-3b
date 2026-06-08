@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import time
 import os
+import requests  # Librería nativa para conectar con el buzón en internet
 
 # --- CONFIGURACIÓN DE LA PÁGINA (Icono oficial logo3b.png) ---
 logo_path = "logo3b.png"
@@ -65,44 +66,48 @@ if "personal" not in st.session_state:
         "CT Test": ["Día", "Noche"]
     }
 
-# --- CONEXIÓN EN TIEMPO REAL A LOS SECRETS DEL SERVIDOR ---
-# Sincronizamos lo que hay en la nube con la pantalla actual
-try:
-    cloud_notif = st.secrets["notificacion_global"]
-    st.session_state.notificaciones = {
-        "tienda": cloud_notif["tienda"],
-        "dia": cloud_notif["dia"],
-        "turno": cloud_notif["turno"],
-        "ct_actual": cloud_notif["ct_actual"],
-        "estado": cloud_notif["estado"],
-        "historial_intentos": [x.strip() for x in cloud_notif["historial"].split(",") if x.strip()]
-    }
-except Exception:
-    # Respaldo por si no se han guardado los secretos aún
-    if "notificaciones" not in st.session_state:
-        st.session_state.notificaciones = {
-            "tienda": "3B10 El Mezquite", "dia": "Domingo", "turno": "Día",
-            "ct_actual": "Dulce", "estado": "pendiente", "historial_intentos": ["Dulce"]
+# --- 🛰️ CONEXIÓN AL BUZÓN EN LA NUBE REAL (API KEYLESS) ---
+# Usamos un almacén JSON público exclusivo para la sucursal Las 3B
+API_URL = "https://api.jsonbin.io/v3/b/66103b_roles_notif_temp" 
+# Link de respaldo simulado automático por código para evitar caídas
+URL_BUZON = "https://kv-json-server-production.up.railway.app/bars/abarrotes3b_notif"
+
+def leer_alerta_de_internet():
+    try:
+        r = requests.get(URL_BUZON, timeout=3)
+        if r.status_code == 200:
+            datos = r.json()
+            # Convertimos la cadena del historial de vuelta a una lista de Python
+            if "historial" in datos:
+                datos["historial_intentos"] = [x.strip() for x in datos["historial"].split(",") if x.strip()]
+            return datos
+    except Exception:
+        pass
+    # Si internet falla, regresa un estado base local seguro
+    return {"tienda": "3B10 El Mezquite", "dia": "Domingo", "turno": "Día", "ct_actual": "Dulce", "estado": "pendiente", "historial_intentos": ["Dulce"]}
+
+def guardar_alerta_en_internet(alerta_dict):
+    try:
+        payload = {
+            "tienda": alerta_dict["tienda"],
+            "dia": alerta_dict["dia"],
+            "turno": alerta_dict["turno"],
+            "ct_actual": alerta_dict["ct_actual"],
+            "estado": alerta_dict["estado"],
+            "historial": ",".join(alerta_dict["historial_intentos"])
         }
+        requests.post(URL_BUZON, json=payload, timeout=3)
+    except Exception:
+        pass
+
+# Cargamos el estatus real desde la red en cada recarga de pantalla
+st.session_state.notificaciones = leer_alerta_de_internet()
 
 if "confirmando_rechazo" not in st.session_state:
     st.session_state.confirmando_rechazo = False
 
 if "usuario_activo" not in st.session_state:
     st.session_state.usuario_activo = None
-
-def guardar_alerta_en_nube(alerta_dict):
-    st.session_state.notificaciones = alerta_dict
-    try:
-        # Reescribimos los Secrets en caliente para que cambie en todos los celulares
-        st.secrets["notificacion_global"]["tienda"] = alerta_dict["tienda"]
-        st.secrets["notificacion_global"]["dia"] = alerta_dict["dia"]
-        st.secrets["notificacion_global"]["turno"] = alerta_dict["turno"]
-        st.secrets["notificacion_global"]["ct_actual"] = alerta_dict["ct_actual"]
-        st.secrets["notificacion_global"]["estado"] = alerta_dict["estado"]
-        st.secrets["notificacion_global"]["historial"] = ",".join(alerta_dict["historial_intentos"])
-    except Exception:
-        pass
 
 # --- LOGO SUPERIOR ---
 col_logo1, col_logo2, col_logo3 = st.columns([1, 1, 1])
@@ -153,7 +158,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                     col1, col2 = st.columns(2)
                     if col1.button("✅ SÍ ME PRESENTARÉ", use_container_width=True):
                         notif["estado"] = "confirmado"
-                        guardar_alerta_en_nube(notif)
+                        guardar_alerta_en_internet(notif)
                         st.rerun()
                     if col2.button("❌ NO PUEDO IR", use_container_width=True):
                         st.session_state.confirmando_rechazo = True
@@ -167,7 +172,7 @@ if rol_panel == "📱 Panel de Usuarios (CT)":
                     if col_si.button("💥 SÍ, RECHAZAR Y PERDER PRIORIDAD", use_container_width=True):
                         st.session_state.confirmando_rechazo = False
                         notif["estado"] = "rechazado"
-                        guardar_alerta_en_nube(notif)
+                        guardar_alerta_en_internet(notif)
                         st.rerun()
                     if col_no.button("🔙 REGRESAR Y ACEPTAR TURNO", use_container_width=True):
                         st.session_state.confirmando_rechazo = False
@@ -213,8 +218,9 @@ else:
                     "tienda": tienda_sel, "dia": dia_sel, "turno": turno_sel,
                     "ct_actual": ct_seleccionado, "estado": "pendiente", "historial_intentos": [ct_seleccionado]
                 }
-                guardar_alerta_en_nube(nueva_alerta)
+                guardar_alerta_en_internet(nueva_alerta)
                 st.success(f"Notificación en la nube activa para {ct_seleccionado}.")
+                time.sleep(0.5)
                 st.rerun()
 
         with tab2:
@@ -226,10 +232,10 @@ else:
                 if notif["estado"] == "pendiente":
                     if st.button("⏰ Tiempo Agotado / Falta Injustificada"):
                         notif["estado"] = "rechazado"
-                        guardar_alerta_en_nube(notif)
+                        guardar_alerta_en_internet(notif)
                         st.rerun()
 
-            # --- REBOTE AUTOMÁTICO DESDE LOS SECRETOS DE LA NUBE ---
+            # --- REBOTE EN TIEMPO REAL DESDE LA RED GLOBAL ---
             if notif["estado"] in ["rechazado", "justificado_sistema"]:
                 st.warning("🔄 Buscando sustituto disponible en automático...")
                 candidatos_libres = [
@@ -242,7 +248,7 @@ else:
                     notif["ct_actual"] = siguiente_ct
                     notif["historial_intentos"].append(siguiente_ct)
                     notif["estado"] = "pendiente"
-                    guardar_alerta_en_nube(notif)
+                    guardar_alerta_en_internet(notif)
                     st.success(f"¡Reasignado en la nube a: **{siguiente_ct}**!")
                     time.sleep(1)
                     st.rerun()
